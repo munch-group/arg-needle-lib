@@ -33,11 +33,34 @@ __all__ = [
 ]
 
 
-def haploid_grm_to_diploid(hap_mat):
+def haploid_grm_to_diploid(hap_mat, nr_dip=None):
     """Turns a haploid GRM into a diploid GRM by treating neighboring IDs as haploid pairs.
+
+    XWAS tweak: 
+    If the GRM is derived from X chromosomes, nr_dip can be used to specify the number of 
+    diploid female samples. The remaining ones are assumed to be male haploids. Individuals
+    must be sorted by sex so that all female individuals have lower row and col indices than
+    males. If the GRM is derived from autosomes and applied to XWAS, this is not needed.
     """
     assert len(hap_mat.shape) == 2
     assert hap_mat.shape[0] == hap_mat.shape[1]
+
+    if nr_dip is not None:        
+        # number of male haploids
+        m = hap_mat.shape[0] - nr_dip * 2 
+        # number of female haploids
+        f = hap_mat.shape[0] - m
+        dip_mat = np.zeros((nr_dip + m, nr_dip + m))
+        # dip/dip sub-matrix
+        dip_mat[:nr_dip, :nr_dip] = hap_mat[:f:2, :f:2] + hap_mat[1:f:2, :f:2] + hap_mat[:f:2, 1:f:2] + hap_mat[1:f:2, 1:f:2]
+        # hap/dip sub-matrix
+        dip_mat[-m:, :-m] = hap_mat[-m::, :f:2] + hap_mat[-m::, 1:f:2]
+        # dip/hap sub-matrix
+        dip_mat[:-m, -m:] = hap_mat[:f:2, -m::] + hap_mat[1:f:2, -m::]
+        # hap/hap sub-matrix
+        dip_mat[-m:, -m:] = hap_mat[-m::, -m::]
+        return dip_mat
+
     assert hap_mat.shape[0] % 2 == 0
     dip_mat = hap_mat[::2, ::2] + hap_mat[1::2, ::2] + hap_mat[::2, 1::2] + hap_mat[1::2, 1::2]
     return dip_mat
