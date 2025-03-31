@@ -1,0 +1,37 @@
+name: fis
+channels:
+  - defaults
+dependencies:
+  - anaconda::rhash
+  - boost
+  - c-compiler
+  - cmake
+  - curl
+  - eigen
+  - gsl
+  - gxx_linux-64==11.1.0
+  - hdf5
+  - ninja
+  - openssl
+  - pybind11
+  - python=3.12
+  - r-hash
+  - click
+  - demes
+  - h5py
+  - jsonschema
+  - jsonschema-specifications
+  - msprime
+  - numpy
+  - pandas
+  - python-dateutil
+  - python-newick
+  - pytz
+  - referencing
+  - rpds-py
+  - ruamel.yaml
+  - scipy
+  - six
+  - tskit
+  - tzdata
+prefix: /home/kmt/miniconda3/envs/fis
