@@ -1,5 +1,26 @@
 # arg-needle-lib
 
+---
+
+Pull changes from palaramara git repository  
+
+https://github.com/PalamaraLab/arg-needle-lib.git
+git fetch upstream
+git merge upstream/master
+git push
+
+
+#include <pybind11/eigen.h>
+#include <pybind11/iostream.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
+namespace py = pybind11;
+
+py::print(1, 2.0, "three",); 
+
+---
+
 A C++ library for representing ARGs, including threading operations and ARG-based association, with a Python API exposed through [`pybind11`](https://github.com/pybind/pybind11).
 See [this paper](https://www.nature.com/articles/s41588-023-01379-x) for details.
 
@@ -79,6 +100,9 @@ or an example:
 - Push changes and check that all [GitHub workflows](https://github.com/PalamaraLab/arg_needle_lib/actions) pass
 - Tag the commit in Git using syntax `vX.Y.Z`
 - Make a release on GitHub, which should trigger a new build that will upload Python wheels to PyPI
+- If building wheels for a new Python version:
+  - Update classifiers in [pyproject.toml](pyproject.toml)
+  - Check whether version of `pypa/cibuildwheel` needs updating in [build-wheels.yml](.github/workflows/build-wheels.yml)
 
 ## License
 

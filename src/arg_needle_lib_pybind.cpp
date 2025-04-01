@@ -1,7 +1,7 @@
 /*
   This file is part of the ARG-Needle genealogical inference and
   analysis software suite.
-  Copyright (C) 2023-2024 ARG-Needle Developers.
+  Copyright (C) 2023-2025 ARG-Needle Developers.
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -128,7 +128,8 @@ PYBIND11_MODULE(arg_needle_lib_pybind, m) {
       .def_readonly("edge", &Mutation::edge)
       .def_readonly("position", &Mutation::position)
       .def_readonly("height", &Mutation::height)
-      .def_readonly("site_id", &Mutation::site_id);
+      .def_readonly("site_id", &Mutation::site_id)
+      .def("get_midpoint_height", &Mutation::get_midpoint_height);
 
   py::class_<Site>(m, "Site")
       .def("get_mutations", &Site::get_mutations, py::return_value_policy::reference_internal)

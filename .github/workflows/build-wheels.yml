@@ -20,9 +20,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            arch: auto64
-            py-vers: cp39-* cp310-* cp311-* cp312-*
+          - os: ubuntu-24.04
+            arch: x86_64
+            py-vers: cp39-* cp310-* cp311-* cp312-* cp313-*
+            before-all: |
+              dnf -y install boost-devel eigen3-devel wget
+              dnf -y install epel-release
+              dnf -y install hdf5-devel
+            extra-env: ""
+            mdt: ""
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+            py-vers: cp39-* cp310-* cp311-* cp312-* cp313-*
             before-all: |
               dnf -y install boost-devel eigen3-devel wget
               dnf -y install epel-release
@@ -31,13 +40,13 @@ jobs:
             mdt: ""
           - os: macos-13
             arch: x86_64
-            py-vers: cp39-* cp310-* cp311-* cp312-*
+            py-vers: cp39-* cp310-* cp311-* cp312-* cp313-*
             before-all: brew install cmake boost eigen hdf5
             extra-env: CC="$(brew --prefix llvm@15)/bin/clang" CXX="$(brew --prefix llvm@15)/bin/clang++" HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
             mdt: 13
           - os: macos-14
             arch: arm64
-            py-vers: cp39-* cp310-* cp311-* cp312-*
+            py-vers: cp39-* cp310-* cp311-* cp312-* cp313-*
             before-all: brew install cmake boost eigen hdf5
             extra-env: CC="$(brew --prefix llvm@15)/bin/clang" CXX="$(brew --prefix llvm@15)/bin/clang++" HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
             mdt: 14
@@ -47,6 +56,7 @@ jobs:
       CIBW_SKIP: cp3*-musllinux_*
       CIBW_ARCHS: ${{ matrix.arch }}
       CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+      CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
       CIBW_BEFORE_ALL: ${{ matrix.before-all }}
       CIBW_BEFORE_BUILD: pip install --upgrade pip setuptools wheel ninja numpy cython
       CIBW_ENVIRONMENT: ${{ matrix.extra-env }}
@@ -60,7 +70,7 @@ jobs:
           fetch-depth: 0
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.19.2
+        uses: pypa/cibuildwheel@v2.22.0
 
       - uses: actions/upload-artifact@v4
         with:
@@ -82,7 +92,7 @@ jobs:
           merge-multiple: true
           path: wheels
 
-      - uses: pypa/gh-action-pypi-publish@v1.10.1
+      - uses: pypa/gh-action-pypi-publish@v1.12.4
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
