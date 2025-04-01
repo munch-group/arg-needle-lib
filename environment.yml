@@ -1,10 +1,6 @@
 channels:
   - conda-forge
-    #- anaconda
-    #- bioconda
-    #  - defaults
 dependencies:
-  - c-compiler
   - cmake
   - curl
   - ninja
@@ -17,4 +13,4 @@ dependencies:
   - eigen
   - pybind11
   - hdf5
-  - gxx_linux-64==11.1.0
+  - cxx-compiler
