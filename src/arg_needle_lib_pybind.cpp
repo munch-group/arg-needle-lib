@@ -48,6 +48,9 @@ using std::deque;
 using std::endl;
 
 PYBIND11_MODULE(arg_needle_lib_pybind, m) {
+
+  py::add_ostream_redirect(m, "ostream_redirect");
+
   py::class_<ARGNode>(m, "ARGNode")
       .def(py::init<int, arg_real_t, arg_real_t, arg_real_t>(), py::arg("ID"), py::arg("height"),
            py::arg("start"), py::arg("end"))

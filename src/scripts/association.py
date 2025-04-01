@@ -199,4 +199,6 @@ def main():
     logging.info("Finished!")
 
 if __name__ == "__main__":
-    main()
+    from arg_needle_lib import ostream_redirect
+    with ostream_redirect(stdout=True, stderr=True):
+        main()
