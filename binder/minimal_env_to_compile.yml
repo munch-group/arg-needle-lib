@@ -1,0 +1,20 @@
+channels:
+  - conda-forge
+    #- anaconda
+    #- bioconda
+    #  - defaults
+dependencies:
+  - c-compiler
+  - cmake
+  - curl
+  - ninja
+  - openssl
+  - python=3.12
+  - boost
+  - r-hash
+  - gsl
+  - anaconda::rhash
+  - eigen
+  - pybind11
+  - hdf5
+  - gxx_linux-64==11.1.0
