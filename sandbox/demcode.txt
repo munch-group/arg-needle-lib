@@ -1,0 +1,34 @@
+
+#use R to generate some data
+
+n=4000
+
+#some snps
+X1=rnorm(n)
+X2=rnorm(n)
+X3=rnorm(n)
+X4=rnorm(n)
+
+#response
+Y=as.numeric(I(X1+X2+rnorm(n)>0))
+
+
+#covariates
+Z1=rnorm(n)
+Z2=rnorm(n)
+
+data=cbind(Y,Z1,Z2,X1,X2,X3,X4)
+write.table(data,"data.txt",row=F,col=F)
+
+
+summary(glm(Y~X1+Z1+Z2,family="binomial"))$coeff[2,3]
+summary(glm(Y~X2+Z1+Z2,family="binomial"))$coeff[2,3]
+summary(glm(Y~X3+Z1+Z2,family="binomial"))$coeff[2,3]
+summary(glm(Y~X4+Z1+Z2,family="binomial"))$coeff[2,3]
+
+
+
+system("gcc -o logistic.out logistic.c -lm -lblas -llapack")
+system("./logistic.out data.txt 4000 2 4")
+
+
