@@ -78,6 +78,437 @@ using Clock = std::chrono::high_resolution_clock;
 
 using boost::dynamic_bitset;
 
+/////////////////////////////////////////////////////////////////////
+
+//doug has made code for logistic regression (including spa)
+//compile this using gcc -lm logistic.c -o logistic.out
+//run using ./logistic.out data.txt num_samples num_preds num_covars
+//which data.txt has num_samples rows and 1+num_preds+num_covars columns
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
+
+extern "C" {
+  void dsyev_	(	const char* JOBZ, const char*	UPLO, int* N, double* A, int* LDA, double* W,
+      double* WORK, int* LWORK, int* INFO);
+
+  void dgemm_	(	const char*	transa, const char*	transb, int*	m, int* n, int*	k, double* alpha,
+   double* a, int* lda, double* b, int* ldb, double* beta, double*	c, int* ldc );
+
+  void dgemv_	(	const char* TRANS, int* M, int* N, double* ALPHA, double* A, int* LDA,
+    double*	X, int* INCX, double* BETA, double* Y, int* INCY);
+}
+
+// subroutine dgemv	(	character 	TRANS,
+//   integer 	M,
+//   integer 	N,
+//   double precision 	ALPHA,
+//   double precision, dimension(lda,*) 	A,
+//   integer 	LDA,
+//   double precision, dimension(*) 	X,
+//   integer 	INCX,
+//   double precision 	BETA,
+//   double precision, dimension(*) 	Y,
+//   integer 	INCY 
+//   )	
+
+// extern void dgemm_();
+// extern void dgemv_();
+// extern void dsyev_();
+
+////////
+
+//this function performs logistic spa
+int spa_logistic(double score, double *data, int ns, double *probs, double *weights, double *stats)
+{
+    int i, count, flag;
+    double value, value2, value3, diff, relax;
+    
+    double kk, kkb, k0, k1, k1b, k2, ww, vv, ss, ssold;
+    
+    
+    //K0(t) is sum ( log (probs exp(tX) + (1-probs)) ) - t XT probs
+    //K1(t) is sum ( X probs / (probs + (1-probs) exp(-tX)) ) - XT probs
+    //K2(t) is sum ( X^2 probs (1-probs) exp(-tX) / (probs + (1-probs) exp(-tX))^2 )
+    
+    //useful to compute sum (data * probs)
+    value3=0;for(i=0;i<ns;i++){value3+=data[i]*probs[i];}
+    
+    //flag will indicate success: 1=good, 2=approx (timeout), -1=fail
+    
+    //starting knot is zero
+    kk=0;
+    
+    //work out starting cgfs (k0 and k1 are trivial)
+    k0=0;k1=0;
+    k2=0;
+    for(i=0;i<ns;i++){k2+=pow(data[i],2)*weights[i];}
+    
+    //starting stat is non-spa stat
+    ssold=score*pow(k2,-.5);
+    
+    count=0;
+    while(1)
+    {
+        if(count==10)
+        {
+            printf("Warning, SPA did not converge within %d iterations\n\n", count);
+            if(flag==1){flag=2;}
+            break;
+        }
+        
+        //work out full move
+        diff=(score-k1)/k2;
+        
+        flag=-1;
+        relax=1;
+        while(relax>0.001)
+        {
+            //get proposed move and corresponding k1
+            kkb=kk+relax*diff;
+            k1b=-value3;
+            for(i=0;i<ns;i++)
+            {k1b+=data[i]*probs[i]/(probs[i]+(1-probs[i])*exp(-data[i]*kkb));}
+            
+            if(fabs(k1b-score)<fabs(k1-score))	//good move - update knot and cgfs and break
+            {
+                kk=kkb;
+                k1=k1b;
+                k0=-kk*value3;k2=0;
+                for(i=0;i<ns;i++)
+                {
+                    value=exp(-data[i]*kk);
+                    value2=probs[i]+(1-probs[i])*value;
+                    k0+=log(value2/value);
+                    k2+=pow(data[i],2)*weights[i]*value*pow(value2,-2);
+                    flag=1;
+                }
+                break;
+            }
+            else	//bad move - will try smaller move
+            {relax*=0.5;}
+        }
+        
+        if(flag==-1)	//failed to move
+        {break;}
+        
+        if(kk*score-k0>0&&k2>0)	//can compute the spa statistic and maybe break
+        {
+            ww=pow(2*(kk*score-k0),.5);
+            if(kk<0){ww=-ww;}
+            vv=kk*pow(k2,.5);
+            ss=(ww+pow(ww,-1)*log(vv/ww));
+            
+            if(fabs(ss-ssold)<0.01){break;}
+            
+            ssold=ss;
+        }
+        else	//failed this time - hopefully will work later
+        {flag=-1;}
+        
+        count++;
+    }
+    
+    if(flag==1||flag==2)	//load up stats
+    {
+        //update test statistic
+        stats[2]=ss;
+        
+        //set SE so consistent with effect size (stats[0]) and test statistic
+        stats[1]=stats[0]/stats[2];
+        
+        //update p-value
+        stats[3]=erfc(fabs(stats[2])*M_SQRT1_2);
+    }
+    
+    return(flag);
+}
+
+////////
+
+//this function simply inverts the matrix mat
+void invert_matrix(double *mat, int length)
+{
+    int i, j, count, count2, lwork, info;
+    double wkopt, value, alpha, beta;
+    double *mat2, *mat3, *work;
+    
+    mat2= (double *) malloc(sizeof(double)*length);
+    mat3= (double *) malloc(sizeof(double)*length*length);
+    
+    //this works out required size of work vector
+    lwork=-1;
+    dsyev_("V", "U", &length, mat, &length, mat2, &wkopt, &lwork, &info);
+    if(info!=0)
+    {printf("Error, eigen priming failed; please tell Doug (info %d, length %d)\n\n", info, length);exit(1);}
+    lwork=(int)wkopt;
+    work = (double *) malloc(sizeof(double)*lwork);
+    
+    //this does eigen decomposition
+    dsyev_("V", "U", &length, mat, &length, mat2, work, &lwork, &info);
+    if(info!=0)
+    {printf("Error, eigen decomp failed; please tell Doug (info %d, length %d)\n\n", info, length);exit(1);}
+    free(work);
+    
+    //get number of (strongly) negative eigenvalues
+    count=0;for(i=0;i<length;i++){count+=(mat2[i]<=-0.000001);}
+    
+    //and number of positive eigenvalues
+    count2=length-count;
+    
+    //load U|E|^⁻.5 into mat3
+    #pragma omp parallel for private(j,i,value) schedule(static)
+    for(j=0;j<length;j++)
+    {
+        if(fabs(mat2[j])>0.000001)
+        {
+            value=pow(fabs(mat2[j]),-.5);
+            for(i=0;i<length;i++){mat3[j*length+i]=mat[j*length+i]*value;}
+        }
+        else
+        {
+            for(i=0;i<length;i++){mat3[(size_t)j*length+i]=0;}
+        }
+    }
+    
+    if(count2>0)	//deal with last count2 vectors (positive eigenvalues)
+    {
+        alpha=1.0;beta=0.0;
+        dgemm_("N", "T", &length, &length, &count2, &alpha, mat3+count*length, &length, mat3+count*length, &length, &beta, mat, &length);
+    }
+    
+    if(count>0)	//deal with first count vectors (negative eigenvalues)
+    {
+        if(count2>0){alpha=-1.0;beta=1.0;}
+        else{alpha=-1.0;beta=0.0;}
+        dgemm_("N", "T", &length, &length, &count, &alpha, mat3, &length, mat3, &length, &beta, mat, &length);
+    }
+    
+    free(mat2);free(mat3);
+}
+
+////////
+
+//this function replaces X with residual from regressing X on Z with weights
+void reg_covar_weighted(double *X, double *Z, int ns, int length, int nf, double *weights)
+{
+    int i, j;
+    double alpha, beta;
+    double *WZ, *ZTWZ, *ZTWX, *thetas;
+    
+    
+    WZ= (double *) malloc(sizeof(double)*ns*nf);
+    ZTWZ= (double *) malloc(sizeof(double)*nf*nf);
+    ZTWX= (double *) malloc(sizeof(double)*nf*length);
+    thetas= (double *) malloc(sizeof(double)*nf*length);
+    
+    //set WZ
+    #pragma omp parallel for private(j, i) schedule(static)
+    for(j=0;j<nf;j++)
+    {
+        for(i=0;i<ns;i++){WZ[i+j*ns]=Z[i+j*ns]*weights[i];}
+    }
+    
+    //compute ZTWZ and ZTWX
+    alpha=1.0;beta=0.0;
+    dgemm_("T", "N", &nf, &nf, &ns, &alpha, WZ, &ns, Z, &ns, &beta, ZTWZ, &nf);
+    dgemm_("T", "N", &nf, &length, &ns, &alpha, WZ, &ns, X, &ns, &beta, ZTWX, &nf);
+    
+    //get inverse of ZTWZ
+    invert_matrix(ZTWZ, nf);
+    
+    //thetas are inv(ZTWZ) ZTWX
+    alpha=1.0;beta=0.0;
+    dgemm_("N", "N", &nf, &length, &nf, &alpha, ZTWZ, &nf, ZTWX, &nf, &beta, thetas, &nf);
+    
+    //X becomes X - Z thetas
+    alpha=-1.0;beta=1.0;
+    dgemm_("N", "N", &ns, &length, &nf, &alpha, Z, &ns, thetas, &nf, &beta, X, &ns);
+    
+    free(WZ);free(ZTWZ);free(ZTWX);free(thetas);
+}
+
+////////
+
+//this matrix estimates coefficients for the null model
+void log_reg_null(double *Y, double *Z, int ns, int nf, double *nullprobs, double *nullweights, int maxiter, double tol)
+{
+    int i, j, count, one=1;
+    double mean, sum, relax, like, like2, likeold, alpha, beta;
+    double *thetas, *thetadiffs, *probs, *probs2, *Zthetas, *Z2, *AI, *BI;
+    
+    thetas= (double *) malloc(sizeof(double)*nf);
+    thetadiffs= (double *) malloc(sizeof(double)*nf);
+    probs= (double *) malloc(sizeof(double)*ns);
+    probs2= (double *) malloc(sizeof(double)*ns);
+    Zthetas= (double *) malloc(sizeof(double)*ns);
+    Z2= (double *) malloc(sizeof(double)*ns*nf);
+    AI= (double *) malloc(sizeof(double)*nf*nf);
+    BI= (double *) malloc(sizeof(double)*nf);
+    
+    //get mean phenotype
+    sum=0;for(i=0;i<ns;i++){sum+=Y[i];}
+    mean=sum/ns;
+    
+    if(mean==0||mean==1)	//trivial
+    {printf("Error, the phenotype is trivial (either all zeros or all ones)\n\n");}
+    
+    //first effect starts at log(mean)-log(1-mean), rest at zero
+    thetas[0]=log(mean)-log(1-mean);
+    for(j=1;j<nf;j++){thetas[j]=0;}
+    
+    //starting probs are mean
+    for(i=0;i<ns;i++){probs[i]=mean;}
+    
+    //get starting likelihood
+    like=0;for(i=0;i<ns;i++){like+=Y[i]*log(probs[i])+(1-Y[i])*log(1-probs[i]);}
+    
+    count=0;
+    relax=1;
+    while(1)	//iterate until likelihood converges
+    {
+        if(count==maxiter){printf("Error, did not converge within %d iterations\n\n", count);exit(1);}
+        
+        //convenient to get Z2=Z*probs*(1-probs)
+        #pragma omp parallel for private(j, i) schedule(static)
+        for(j=0;j<nf;j++)
+        {
+            for(i=0;i<ns;i++){Z2[i+j*ns]=Z[i+j*ns]*probs[i]*(1-probs[i]);}
+        }
+        
+        //first derivative vector is t(Z) (Y-probs)
+        #pragma omp parallel for private(j, i) schedule(static)
+        for(j=0;j<nf;j++)
+        {
+            BI[j]=0;for(i=0;i<ns;i++){BI[j]+=(Y[i]-probs[i])*Z[i+j*ns];}
+        }
+        
+        //minus second derivative matrix is t(Z) probs (1-probs) Z
+        alpha=1.0;beta=0.0;
+        dgemm_("T", "N", &nf, &nf, &ns, &alpha, Z, &ns, Z2, &ns, &beta, AI, &nf);
+        
+        //invert AI
+        (void) invert_matrix(AI, nf);
+        
+        //proposed moves are inv AI BI
+        alpha=1.0;beta=0.0;
+        dgemv_("N", &nf, &nf, &alpha, AI, &nf, BI, &one, &beta, thetadiffs, &one);
+        
+        //try to move
+        likeold=like;
+        relax=1;
+        while(relax>0.0001)
+        {
+            //propose moving relax*thetadiffs
+            for(j=0;j<nf;j++){thetas[j]+=relax*thetadiffs[j];}
+            
+            //get corresponding probabilities
+            alpha=1.0;beta=0.0;
+            dgemv_("N", &ns, &nf, &alpha, Z, &ns, thetas, &one, &beta, Zthetas, &one);
+            for(i=0;i<ns;i++){probs2[i]=pow(1+exp(-Zthetas[i]),-1);}
+            
+            //get likelihood of proposed move
+            like2=0;for(i=0;i<ns;i++){like2+=Y[i]*log(probs2[i])+(1-Y[i])*log(1-probs2[i]);}
+            
+            if(like2>like-tol)	//accept move
+            {
+                like=like2;
+                for(i=0;i<ns;i++){probs[i]=probs2[i];}
+                break;
+            }
+            else	//move back and next turn try smaller move
+            {
+                for(j=0;j<nf;j++){thetas[j]-=relax*thetadiffs[j];}
+                relax*=.5;
+            }
+        }
+        
+        //see if breaking
+        if(fabs(like-likeold)<tol){break;}
+        
+        count++;
+    }
+    
+    //load up nullprobs and nullweights
+    for(i=0;i<ns;i++){nullprobs[i]=probs[i];nullweights[i]=probs[i]*(1-probs[i]);}
+    
+    free(thetas);free(thetadiffs);free(probs);free(probs2);free(Zthetas);free(Z2);free(AI);free(BI);
+}
+
+
+
+double spa_pvalue(double *Y, double *Z, double *X, 
+  int num_samples, int num_preds, int num_covars, int num_fixed,
+  double *nullprobs, double *nullweights, double *Yadj) {
+
+    int i, j, one=1, info;
+    
+
+    //regress covariates out of X
+    reg_covar_weighted(X, Z, num_samples, num_preds, num_fixed, nullweights);
+    
+    //compute t(X) Yadj
+    double *XTYadj= (double *) malloc(sizeof(double)*num_preds);
+    
+    double alpha=1.0;
+    double beta=0.0;
+    dgemv_("T", &num_samples, &num_fixed, &alpha, X, &num_samples, Yadj, &one, &beta, XTYadj, &one);
+    
+    //compute t(X) W X
+    double *XTWX= (double *) malloc(sizeof(double)*num_preds);
+    
+    #pragma omp parallel for private(j,i) schedule(static)
+    for(j=0;j<num_preds;j++)
+    {
+        XTWX[j]=0;for(i=0;i<num_samples;i++){XTWX[j]+=pow(X[i+j*num_samples],2)*nullweights[i];}
+    }
+    
+    //can now test predictors - will compute effect, SE, test stat, p-value
+    double *stats= (double *) malloc(sizeof(double)*num_samples*4);
+    
+    for(j=0;j<num_preds;j++)
+    {
+        //the score statistic is YTdata, with variance XTWX
+        //SAIGE paper explains how score/variance approx equals LogOR, and 1/var approx equals Var of LogOR
+        //this is because XT(Y-mu)/XTWX is 1-step NR estimate of LogOR
+        stats[0+j*4]=XTYadj[j]/XTWX[j];
+        stats[1+j*4]=pow(XTWX[j],-.5);
+        stats[2+j*4]=stats[0+j*4]/stats[1+j*4];
+        stats[3+j*4]=erfc(fabs(stats[2+j*4])*M_SQRT1_2);
+        
+        printf("Predictor %d, test statistic %f, pvalue %e\n", j+1, stats[2+j*4], stats[3+j*4]);
+    }
+    printf("\n");
+    
+    //do spa for predictors with p-value < 0.05
+    for(j=0;j<num_preds;j++)
+    {
+        if(stats[3+j*4]<0.05)
+        {
+            printf("Retest predictor %d, test statistic %f, pvalue %e\n", j+1, stats[2+j*4], stats[3+j*4]);
+            
+            info=spa_logistic(XTYadj[j], X+j*num_samples, num_samples, nullprobs, nullweights, stats+j*4);
+            
+            printf("SPA test statistic %f, pvalue %e\n", stats[2+j*4], stats[3+j*4]);
+        }
+    }
+    
+    free(Y);free(Z);free(X);
+    free(nullprobs);free(nullweights);free(Yadj);
+    free(XTYadj);free(XTWX);
+    free(stats);
+    
+    return(1);
+}
+
+
+
+/////////////////////////////////////////////////////////////////////
+
+
+
 namespace arg_utils {
 
 unsigned validate_parallel_tasks(const unsigned num_tasks) {
@@ -2821,8 +3252,9 @@ vector<vector<vector<arg_real_t>>> distance_matrix_maf_bins(const ARG& arg,
 //       of phenotype as an approximation, like BOLT. The careful version will
 //       give slightly more significant p-values, especially for significant
 //       variants. Defaults to false.
-arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw_phenotypes,
-                                   const deque<bool>& use_sample, string file_root, int chromosome,
+arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw_phenotypes, 
+    const  vector<arg_real_t>& sex,
+    const deque<bool>& use_sample, string file_root, int chromosome,
                                    string snp_prefix, arg_real_t min_maf, arg_real_t max_maf,
                                    arg_real_t write_bitset_threshold, arg_real_t calibration_factor,
                                    bool concise_pvalue, bool max_only, bool careful) {
@@ -2840,9 +3272,26 @@ arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw
     throw std::logic_error(THROW_LINE(my_string));
   }
 
+  std::vector<arg_real_t> sample_idx;
+  std::vector<arg_real_t> use_haplotype;
+  arg_real_t active_hap_n = 0;
+  for (int i=0; i <  raw_phenotypes.size(); ++i) {
+    int hap_count = 2;
+    if (chromosome == 23) { // chrX
+      hap_count =  sex[i];
+    }
+    active_hap_n += hap_count;
+    for (int j=0; j <  hap_count; ++j) {
+      sample_idx.push_back(i);
+      use_haplotype.push_back(use_sample[i]);
+    }
+  }  
+
   size_t n = raw_phenotypes.size();
-  assert(arg.leaf_ids.size() % 2 == 0); // redundant but keeping it in
-  assert(arg.leaf_ids.size() == 2 * n);
+  if (chromosome < 23) {
+    assert(arg.leaf_ids.size() % 2 == 0); // redundant but keeping it in
+    assert(arg.leaf_ids.size() == 2 * n);
+  }
   assert(use_sample.size() == n);
   if (min_maf <= 0) {
     min_maf = 0;
@@ -2850,10 +3299,57 @@ arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw
   if (max_maf <= 0) {
     max_maf = 0.5;
   }
+  
+
+
+  //////////////////////
+
+  // // //load up data
+  // // double *Y = (double *) malloc(sizeof(double)*num_samples);
+  // // double *Z = (double *) malloc(sizeof(double)*num_samples*num_fixed);
+  // // double *X = (double *) malloc(sizeof(double)*num_samples*num_preds);
+
+
+  // //solve the null model (just regress Y on Z)
+  // double *nullprobs = (double *) malloc(sizeof(double)*num_samples);
+  // double *nullweights= (double *) malloc(sizeof(double)*num_samples);
+  // log_reg_null(Y, Z, num_samples, num_fixed, nullprobs, nullweights, 100, 1e-6);
+  
+  // //the adjusted response is (Y-nullprobs)
+  // double *Yadj= (double *) malloc(sizeof(double)*num_samples);
+  // for(i=0;i<num_samples;i++){Yadj[i]=Y[i]-nullprobs[i];}
+    
+  //////////////////////
+    
+  int num_samples = raw_phenotypes.size();
+  double *Y = &raw_phenotypes[0];
+  int num_fixed = 1 + num_covars;
+  int num_preds = .size();
+
+  double *Z = (double *) malloc(sizeof(double)*num_samples*num_fixed);
+  double *X = (double *) malloc(sizeof(double)*num_samples*num_preds);
+
+
+
+  //solve the null model (just regress Y on Z)
+  double *nullprobs = (double *) malloc(sizeof(double)*num_samples);
+  double *nullweights= (double *) malloc(sizeof(double)*num_samples);
+  log_reg_null(Y, Z, num_samples, num_fixed, nullprobs, nullweights, 100, 1e-6);
+  
+  //the adjusted response is (Y-nullprobs)
+  double *Yadj= (double *) malloc(sizeof(double)*num_samples);
+  for(i=0;i<num_samples;i++){Yadj[i]=Y[i]-nullprobs[i];}
+
+  //////////////////////
+  
 
   // standardize the raw_phenotypes and put into phenotypes
   // only deals with entries for which use_sample[i] is true
   vector<arg_real_t> phenotypes = utils::standardize_mask(raw_phenotypes, use_sample);
+
+
+
+
   arg_real_t active_n = 0;
   for (size_t i = 0; i < n; ++i) {
     active_n += use_sample[i]; // casts bool to 0 or 1 real value
@@ -2878,9 +3374,9 @@ arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw
   // because we get out the values, which is non-const, we can't use
   // const DescendantList&
   arg_utils::visit_clades(
-      arg, [&max_chi2, &phenotypes, &use_sample, &count, &arg_offset, &results_out, &haps_out,
+      arg, [&max_chi2, &phenotypes, &sex, &sample_idx, &use_haplotype, &count, &arg_offset, &results_out, &haps_out,
             &significant_count, write_bitset_threshold, concise_pvalue, calibration_factor,
-            max_only, file_root, snp_prefix, chromosome, min_maf, max_maf, careful, active_n](
+            max_only, file_root, snp_prefix, chromosome, min_maf, max_maf, careful, active_n, active_hap_n](
                DescendantList& desc_list, const ARGNode* node, arg_real_t start, arg_real_t end) {
         (void) node;
         arg_real_t one_count = 0;   // count of descendant i for which i/2 is a sample
@@ -2889,11 +3385,20 @@ arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw
 
         int last_value = -5; // put a big gap to ensure correctness
         for (int v : desc_list.values()) {
-          if (use_sample[v / 2]) {
+          if (use_haplotype[v]) {
             one_count += 1;
-            one_sum += phenotypes[v / 2];
+            std::cout << chromosome << std::endl;
+            if (chromosome == 23) {
+              one_sum += phenotypes[sample_idx[v]] * sex[sample_idx[v]] / 2  ; // pheno if female or male encoded as homo, pheno*2 if male encoded as het
+            } else {
+              one_sum += phenotypes[sample_idx[v]];
+            }
             if ((v ^ 1) == last_value) { // checks that last_value = 2*j and v = 2*j+1
-              cross_count += 1;
+              if (chromosome == 23) {
+                cross_count += (sex[sample_idx[v]] - 1); // 0 if male 1 if female
+              } else {                
+                cross_count += 1;
+              }
             }
             last_value = v;
           }
@@ -2906,9 +3411,13 @@ arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw
           sign = -1;
         }
 
-        int mac = round(std::min(one_count, 2 * active_n - one_count));
-        int min_mac = round(2 * active_n * min_maf);
-        int max_mac = round(2 * active_n * max_maf);
+
+        // int spa_logistic(double score, double *data, int ns, double *probs, double *weights, double *stats)
+
+
+        int mac = round(std::min(one_count, active_hap_n - one_count));
+        int min_mac = round(active_hap_n * min_maf);
+        int max_mac = round(active_hap_n * max_maf);
         // MAF filter, also don't want roots
         if ((mac > 0) && (mac >= min_mac) && (mac <= max_mac)) {
           arg_real_t norm_y_sq = active_n - 1;
@@ -3056,8 +3565,10 @@ arg_real_t association_diploid_all(const ARG& arg, const vector<arg_real_t>& raw
 //       give slightly more significant p-values, especially for significant
 //       variants. Defaults to false.
 vector<arg_real_t> association_diploid_mutation(
-    const ARG& arg, const vector<arg_real_t>& raw_phenotypes, const deque<bool>& use_sample,
-    string file_root, vector<arg_real_t> mus, unsigned random_seed, int chromosome,
+  const ARG& arg, const vector<arg_real_t>& raw_phenotypes, 
+  const vector<arg_real_t>& sex,   
+  const deque<bool>& use_sample,
+  string file_root, vector<arg_real_t> mus, unsigned random_seed, int chromosome,
     string snp_prefix, arg_real_t min_maf, arg_real_t max_maf, arg_real_t write_bitset_threshold,
     arg_real_t calibration_factor, bool concise_pvalue, bool max_only, bool careful) {
   // Sample IDs must be consecutive
@@ -3127,7 +3638,7 @@ vector<arg_real_t> association_diploid_mutation(
   // const DescendantList&
   arg_utils::visit_branches(
       arg,
-      [&max_chi2s, &phenotypes, &use_sample, &count, &arg_offset, &results_out, &haps_out,
+      [&max_chi2s, &phenotypes, &sex, &use_sample, &count, &arg_offset, &results_out, &haps_out,
        &significant_count, write_bitset_threshold, concise_pvalue, &generator, &mus,
        calibration_factor, max_only, file_root, snp_prefix, chromosome, min_maf, max_maf, careful,
        active_n](DescendantList& desc_list, DescendantList& _unused, const ARGNode* parent_node,
@@ -3150,9 +3661,18 @@ vector<arg_real_t> association_diploid_mutation(
           for (int v : desc_list.values()) {
             if (use_sample[v / 2]) {
               one_count += 1;
-              one_sum += phenotypes[v / 2];
+              std::cout << chromosome << std::endl;
+              if (chromosome == 23) {
+                one_sum += phenotypes[v / 2] * sex[v / 2] / 2  ; // pheno if female or male encoded as homo, pheno*2 if male encoded as het
+              } else {
+                one_sum += phenotypes[v / 2];
+              }
               if ((v ^ 1) == last_value) { // checks that last_value = 2*j and v = 2*j+1
-                cross_count += 1;
+                if (chromosome == 23) {
+                  cross_count += (sex[v / 2] - 1); // 0 if male 1 if female
+                } else {                
+                  cross_count += 1;
+                }
               }
               last_value = v;
             }

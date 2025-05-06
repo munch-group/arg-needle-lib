@@ -193,3 +193,7 @@ cython_debug/
 .idea/
 
 cmake-build*/
+
+# pixi environments
+.pixi
+*.egg-info

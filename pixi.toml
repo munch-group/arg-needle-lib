@@ -1,0 +1,27 @@
+[workspace]
+authors = ["Kasper Munch <kaspermunch@birc.au.dk>"]
+channels = ["conda-forge", "anaconda"]
+name = "arg-needle-lib"
+platforms = ["linux-aarch64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+cmake = "*"
+curl = "*"
+ninja = "*"
+openssl = "*"
+python = "3.12.*"
+boost = "*"
+r-hash = "*"
+gsl = "*"
+rhash = { channel = "anaconda" }
+eigen = "*"
+pybind11 = "*"
+hdf5 = "*"
+cxx-compiler = "*"
+lapackpp = "*"
+liblapacke = ">=3.9.0,<4"
+liblapack = ">=3.9.0,<4"
+lapack = ">=3.9.0,<4"

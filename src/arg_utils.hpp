@@ -141,7 +141,8 @@ std::vector<std::vector<arg_real_t>> distance_matrix_v2(const ARG& arg, arg_real
                                               arg_real_t to_pos = -1); // should this be Eigen?
 std::vector<std::vector<std::vector<arg_real_t>>>
 distance_matrix_maf_bins(const ARG& arg, std::vector<arg_real_t> maf_bins); // should this be Eigen?
-arg_real_t association_diploid_all(const ARG& arg, const std::vector<arg_real_t>& raw_phenotypes,
+arg_real_t association_diploid_all(const ARG& arg, const std::vector<arg_real_t>& raw_phenotypes, 
+                                   const std::vector<arg_real_t>& sex,
                                    const std::deque<bool>& use_sample, std::string file_root,
                                    int chromosome = 1, std::string snp_prefix = "",
                                    arg_real_t min_maf = -1, arg_real_t max_maf = -1,
@@ -149,7 +150,9 @@ arg_real_t association_diploid_all(const ARG& arg, const std::vector<arg_real_t>
                                    arg_real_t calibration_factor = 1, bool concise_pvalue = true,
                                    bool max_only = false, bool careful = false);
 std::vector<arg_real_t> association_diploid_mutation(
-    const ARG& arg, const std::vector<arg_real_t>& raw_phenotypes, const std::deque<bool>& use_sample,
+    const ARG& arg, const std::vector<arg_real_t>& raw_phenotypes, 
+    const std::vector<arg_real_t>& sex, 
+    const std::deque<bool>& use_sample, 
     std::string file_root, std::vector<arg_real_t> mus, unsigned random_seed = 0, int chromosome = 1,
     std::string snp_prefix = "", arg_real_t min_maf = -1, arg_real_t max_maf = -1,
     arg_real_t write_bitset_threshold = -1, arg_real_t calibration_factor = 1,

@@ -277,7 +277,9 @@ PYBIND11_MODULE(arg_needle_lib_pybind, m) {
         py::arg("max_pos") = std::nullopt, py::arg("num_tasks") = std::nullopt, "Get the local arg volume");
   // arg_utils: association
   m.def("association_diploid_all", &arg_utils::association_diploid_all, py::arg("arg"),
-        py::arg("phenotype"), py::arg("use_sample"), py::arg("file_root"),
+        py::arg("phenotype"), 
+        py::arg("sex"), 
+        py::arg("use_sample"), py::arg("file_root"),
         py::arg("chromosome") = 1, py::arg("snp_prefix") = "", py::arg("min_maf") = -1,
         py::arg("max_maf") = -1, py::arg("write_bitset_threshold") = -1,
         py::arg("calibration_factor") = 1, py::arg("concise_pvalue") = true,
@@ -292,6 +294,9 @@ PYBIND11_MODULE(arg_needle_lib_pybind, m) {
           Arguments:
               arg: arg_needle_lib.ARG object with 2*n leaves
               phenotype: a length n array of phenotypes in the same order as the ARG samples.
+                Missing values are specified using the use_sample array and can be filled
+                with any value in the phenotype.
+              sex: a length n array of phenotypes in the same order as the ARG samples.
                 Missing values are specified using the use_sample array and can be filled
                 with any value in the phenotype.
               use_sample: a length n array of booleans, False means the phenotype is missing
@@ -315,7 +320,9 @@ PYBIND11_MODULE(arg_needle_lib_pybind, m) {
               The maximum chi2 across the tests.
         )pbdoc");
   m.def("association_diploid_mutation", &arg_utils::association_diploid_mutation, py::arg("arg"),
-        py::arg("phenotype"), py::arg("use_sample"), py::arg("file_root"), py::arg("mus"),
+        py::arg("phenotype"), 
+        py::arg("sex"),
+        py::arg("use_sample"), py::arg("file_root"), py::arg("mus"),
         py::arg("random_seed") = 0, py::arg("chromosome") = 1, py::arg("snp_prefix") = "",
         py::arg("min_maf") = -1, py::arg("max_maf") = -1, py::arg("write_bitset_threshold") = -1,
         py::arg("calibration_factor") = 1, py::arg("concise_pvalue") = true,
@@ -335,6 +342,9 @@ PYBIND11_MODULE(arg_needle_lib_pybind, m) {
           Arguments:
               arg: arg_needle_lib.ARG object with 2*n leaves
               phenotype: a length n array of phenotypes in the same order as the ARG samples.
+                Missing values are specified using the use_sample array and can be filled
+                with any value in the phenotype.
+              sex: a length n array of phenotypes in the same order as the ARG samples.
                 Missing values are specified using the use_sample array and can be filled
                 with any value in the phenotype.
               use_sample: a length n array of booleans, False means the phenotype is missing

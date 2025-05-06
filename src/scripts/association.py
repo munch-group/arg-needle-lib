@@ -124,12 +124,17 @@ def main():
     pheno_df = pheno_df.dropna()
     residual_dict = dict(zip(pheno_df.index, pheno_df["PHENO"]))
 
-    # Load sample IDs
+    # Load sample IDs and sex
     sample_ids = []
+    sex = []
+    prev_sex = None
     with open(args.arg_sample_path, "r") as infile:
-        for i, line in enumerate(infile):
-            if i >= 2:
-                sample_ids.append(int(line.strip("\n").split(" ")[0].split("\t")[0]))
+        next(infile)
+        for line in infile:
+            sample_id, _, *extra = line.split()
+            sample_ids.append(sample_id)
+            if len(extra) >= 2:
+                sex.append(int(extra[1]))
 
     # Make use_sample and residual lists
     use_sample = []
@@ -177,7 +182,9 @@ def main():
     if args.sampling_rate == 0:
         logging.info("Testing all clades of the ARG")
         max_chi2 = arg_needle_lib.association_diploid_all(
-            arg, residual, use_sample, args.out_path,
+            arg, residual, 
+            sex, 
+            use_sample, args.out_path,
             chrom_num, snp_prefix, min_maf=min_maf, max_maf=max_maf,
             write_bitset_threshold=args.haps_threshold,
             calibration_factor=args.calibration_factor,
@@ -186,7 +193,9 @@ def main():
         assert args.sampling_rate > 0
         logging.info(f"Testing sampled mutations with rate {args.sampling_rate} and seed {args.random_seed} (note: seed 0 means use system time to seed)")
         max_chi2 = arg_needle_lib.association_diploid_mutation(
-            arg, residual, use_sample, args.out_path,
+            arg, residual, 
+            sex,
+            use_sample, args.out_path,
             [args.sampling_rate], args.random_seed,
             chrom_num, snp_prefix, min_maf=min_maf, max_maf=max_maf,
             write_bitset_threshold=args.haps_threshold,

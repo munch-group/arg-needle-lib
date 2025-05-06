@@ -79,8 +79,9 @@ target_include_directories(
 set_target_properties(arg_needle_lib PROPERTIES PUBLIC_HEADER "${arg_needle_lib_hdr}")
 
 
-target_link_libraries(arg_needle_lib PRIVATE Boost::headers Boost::iostreams Threads::Threads HDF5::HDF5)
+target_link_libraries(arg_needle_lib PRIVATE Boost::headers Boost::iostreams Threads::Threads HDF5::HDF5 -llapack)
 target_link_libraries(arg_needle_lib PUBLIC Eigen3::Eigen)
+
 
 # Turning off warnings for now
 # target_link_libraries(arg_needle_lib PRIVATE project_warnings)
